@@ -1,0 +1,69 @@
+diff --git a/Makefile b/Makefile
+index 470ac86..7879874 100644
+--- a/Makefile
++++ b/Makefile
+@@ -43,7 +43,9 @@ dist: clean
+ install: st
+ 	mkdir -p $(DESTDIR)$(PREFIX)/bin
+ 	cp -f st $(DESTDIR)$(PREFIX)/bin
++	cp -f st-urlhandler $(DESTDIR)$(PREFIX)/bin
+ 	chmod 755 $(DESTDIR)$(PREFIX)/bin/st
++	chmod 755 $(DESTDIR)$(PREFIX)/bin/st-urlhandler
+ 	mkdir -p $(DESTDIR)$(MANPREFIX)/man1
+ 	sed "s/VERSION/$(VERSION)/g" < st.1 > $(DESTDIR)$(MANPREFIX)/man1/st.1
+ 	chmod 644 $(DESTDIR)$(MANPREFIX)/man1/st.1
+@@ -52,6 +54,7 @@ install: st
+ 
+ uninstall:
+ 	rm -f $(DESTDIR)$(PREFIX)/bin/st
++	rm -f $(DESTDIR)$(PREFIX)/bin/st-urlhandler
+ 	rm -f $(DESTDIR)$(MANPREFIX)/man1/st.1
+ 
+ .PHONY: all options clean dist install uninstall
+diff --git a/config.def.h b/config.def.h
+index 6f05dce..fc1c446 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -185,6 +185,12 @@ static MouseShortcut mshortcuts[] = {
+ #define MODKEY Mod1Mask
+ #define TERMMOD (ControlMask|ShiftMask)
+ 
++static char *openurlcmd[] = { "/bin/sh", "-c", "st-urlhandler", "externalpipe", NULL };
++
++static char *copyurlcmd[] = { "/bin/sh", "-c",
++    "tmp=$(sed 's/.*│//g' | tr -d '\n' | grep -aEo '(((http|https)://|www\\.)[a-zA-Z0-9.]*[:]?[a-zA-Z0-9./@$&%?$#=_-]*)|((magnet:\\?xt=urn:btih:)[a-zA-Z0-9]*)' | uniq | sed 's/^www./http:\\/\\/www\\./g' ); IFS=; [ ! -z $tmp ] && echo $tmp | dmenu -i -p 'Copy' -l 10 | tr -d '\n' | xclip -selection clipboard",
++    "externalpipe", NULL };
++
+ static Shortcut shortcuts[] = {
+ 	/* mask                 keysym          function        argument */
+ 	{ XK_ANY_MOD,           XK_Break,       sendbreak,      {.i =  0} },
+@@ -199,6 +205,8 @@ static Shortcut shortcuts[] = {
+ 	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
+ 	{ ShiftMask,            XK_Insert,      selpaste,       {.i =  0} },
+ 	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
++	{ MODKEY,               XK_l,           externalpipe,   {.v = openurlcmd } },
++	{ MODKEY,               XK_y,           externalpipe,   {.v = copyurlcmd } },
+ };
+ 
+ /*
+diff --git a/st-urlhandler b/st-urlhandler
+new file mode 100644
+index 0000000..d44bb99
+--- /dev/null
++++ b/st-urlhandler
+@@ -0,0 +1,15 @@
++#!/bin/sh
++
++urlregex="(((http|https)://|www\\.)[a-zA-Z0-9.]*[:]?[a-zA-Z0-9./@$&%?$#=_-]*)|((magnet:\\?xt=urn:btih:)[a-zA-Z0-9]*)"
++
++# First remove linebreaks and mutt sidebars:
++urls="$(sed 's/.*│//g' | tr -d '\n' |
++	grep -aEo "$urlregex" | # grep only urls as defined above.
++	uniq | # Ignore neighboring duplicates.
++	sed 's/^www./http:\/\/www\./g')"
++
++[ -z "$urls" ] && exit
++
++chosen="$(echo "$urls" | dmenu -i -p 'Open' -l 10)"
++
++setsid xdg-open "$chosen" >/dev/null 2>&1 &
